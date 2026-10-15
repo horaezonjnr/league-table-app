@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 p-2">
+<div class="max-w-lg mx-auto bg-white p-4 rounded-lg shadow">
+
+<div class="flex justify-between items-center">
+  <h1 class="text-xl font-bold">Admin Panel</h1>
+  <a href="index.html" class="text-sm bg-gray-200 px-3 py-2 rounded">View Table</a>
+</div>
+
+<!-- Simple protection -->
+<div id="login" class="mt-6">
+  <p class="text-sm mb-2">Enter admin password:</p>
+  <input id="pass" type="password" placeholder="Enter: admin123" class="w-full border p-3 rounded">
+  <button onclick="checkPass()" class="w-full bg-gray-800 text-white p-3 rounded mt-2">Unlock</button>
+  <p class="text-[10px] text-gray-500 mt-2">Change password later in code. Default is admin123</p>
+</div>
+
+<div id="panel" class="hidden">
+  <div class="mt-6">
+    <h2 class="font-bold text-lg border-b pb-2">⏳ Pending Results (Need Approval)</h2>
+    <div id="pending" class="mt-3 space-y-3">Loading...</div>
+  </div>
+
+  <div class="mt-8">
+    <h2 class="font-bold text-lg border-b pb-2">🚩 Disputes & Resolution</h2>
+    <div id="disputes" class="mt-3 space-y-2 text-sm">Loading...</div>
+  </div>
+
+  <div class="mt-8">
+    <h2 class="font-bold text-lg border-b pb-2">✅ Recently Approved</h2>
+    <div id="approved" class="mt-3 space-y-2 text-sm">Loading...</div>
+  </div>
+</div>
+
+</div>
+
+<script src="config.js"></script>
+<script>
+function checkPass(){
+  if(document.getElementById('pass').value === 'admin123'){
+    document.getElementById('login').classList.add('hidden');
+    document.getElementById('panel').classList.remove('hidden');
+    loadAll();
+  } else { alert('Wrong password'); }
+}
+
+async function loadPending(){
+  const {data, error} = await supabaseClient.from('results').select('*, p1:player1_id(name), p2:player2_id(name)').eq('status','pending').order('created_at', {ascending:false});
+  if(error){ document.getElementById('pending').innerHTML = error.message; return; }
+  if(!data || data.length===0){ document.getElementById('pending').innerHTML = "<p class='text-gray-500 text-sm'>No pending results - all clear!</p>"; return; }
+  let html = "";
+  data.forEach(r=>{
+    html += `<div class="border p-3 rounded bg-yellow-50">
+      <p class="font-bold">${r.p1?.name||'Unknown'} ${r.player1_score} - ${r.player2_score} ${r.p2?.name||'Unknown'}</p>
+      <p class="text-xs text-gray-600">Submitted by: ${r.submitted_by} • ${new Date(r.created_at).toLocaleString()}</p>
+      <a href="${r.screenshot_url}" target="_blank" class="block mt-2"><img src="${r.screenshot_url}" class="w-full rounded border max-h-64 object-contain bg-white"></a>
+      <div class="mt-3 flex gap-2">
+        <button onclick="approve('${r.id}')" class="flex-1 bg-green-600 text-white py-3 rounded font-bold">✓ Approve</button>
+        <button onclick="reject('${r.id}')" class="flex-1 bg-red-600 text-white py-3 rounded font-bold">✕ Reject</button>
+      </div>
+      <button onclick="openDispute('${r.id}')" class="text-xs mt-2 text-gray-600 underline w-full text-left">Mark as Disputed + Add Note</button>
+    </div>`;
+  });
+  document.getElementById('pending').innerHTML = html;
+}
+
+async function loadApproved(){
+  const {data} = await supabaseClient.from('results').select('*, p1:player1_id(name), p2:player2_id(name)').eq('status','approved').order('created_at',{ascending:false}).limit(10);
+  document.getElementById('approved').innerHTML = data?.map(r=>`<div class="border-b py-2 flex justify-between"><span>${r.p1.name} ${r.player1_score}-${r.player2_score} ${r.p2.name}</span><button onclick="revert('${r.id}')" class="text-xs text-gray-500">Undo</button></div>`).join('') || 'None';
+}
+
+async function loadDisputes(){
+  const {data} = await supabaseClient.from('disputes').select('*, results(*, p1:player1_id(name), p2:player2_id(name))').order('created_at',{ascending:false});
+  if(!data || data.length===0){ document.getElementById('disputes').innerHTML = "<p class='text-gray-500'>No disputes</p>"; return; }
+  let html = "";
+  data.forEach(d=>{
+    html += `<div class="border p-2 rounded ${d.status==='open'?'bg-red-50':''}">
+      <p class="font-bold">${d.status.toUpperCase()} - ${d.results?.p1?.name||''} vs ${d.results?.p2?.name||''}</p>
+      <p>Reason: ${d.reason}</p>
+      <p class="text-xs text-gray-600">By: ${d.reported_by} • ${new Date(d.created_at).toLocaleString()}</p>
+      ${d.resolution_notes?`<p class="text-xs mt-1"><b>Resolution:</b> ${d.resolution_notes}</p>`:''}
+      <div class="flex gap-2 mt-2">
+        <button onclick="resolveDispute('${d.id}')" class="bg-blue-600 text-white text-xs px-2 py-1 rounded">Resolve</button>
+        <button onclick="deleteDispute('${d.id}')" class="bg-gray-600 text-white text-xs px-2 py-1 rounded">Close</button>
+      </div>
+    </div>`;
+  });
+  document.getElementById('disputes').innerHTML = html;
+}
+
+function loadAll(){ loadPending(); loadApproved(); loadDisputes(); }
+
+async function approve(id){ if(confirm('Approve this result? It will update league table.')){ await supabaseClient.from('results').update({status:'approved'}).eq('id',id); loadAll(); } }
+async function reject(id){ const reason = prompt('Reject reason?'); if(reason!==null){ await supabaseClient.from('results').update({status:'rejected'}).eq('id',id); loadAll(); } }
+async function revert(id){ await supabaseClient.from('results').update({status:'pending'}).eq('id',id); loadAll(); }
+async function openDispute(id){
+  const reason = prompt('Dispute reason:'); if(!reason) return;
+  const by = prompt('Your admin name:')||'Admin';
+  await supabaseClient.from('disputes').insert({result_id:id, reason, reported_by:by, status:'open'});
+  await supabaseClient.from('results').update({status:'rejected'}).eq('id',id);
+  loadAll();
+}
+async function resolveDispute(id){
+  const notes = prompt('Resolution notes:'); if(notes===null) return;
+  await supabaseClient.from('disputes').update({status:'resolved', resolution_notes:notes}).eq('id',id);
+  loadAll();
+}
+async function deleteDispute(id){ await supabaseClient.from('disputes').update({status:'rejected'}).eq('id',id); loadAll(); }
+</script>
+</body>
+</html>
