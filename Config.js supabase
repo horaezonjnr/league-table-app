@@ -1,0 +1,6 @@
+// Replace with your Supabase project details
+// You get these from Supabase > Project Settings > API
+const SUPABASE_URL = "tiqeumuakyvkqeegzfbz.superbase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpcWV1bXVha3l2a3FlZWd6ZmJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNzYzOTAsImV4cCI6MjEwNzY1MjM5MH0.Q4Rsoloabw-MXoMTpwszxxPJFZCtpDezaSym49kCqJ8";
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
